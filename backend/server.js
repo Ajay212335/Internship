@@ -14,6 +14,7 @@ const fetch = require('node-fetch'); // npm i node-fetch@2
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
 ///////////////////// CONFIG - from environment variables /////////////////////
 
