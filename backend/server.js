@@ -19,16 +19,14 @@ const path = require('path');
 ///////////////////// CONFIG - hardcoded (from your message) /////////////////////
 const PORT = 5050;
 const MONGO_URI = 'mongodb://127.0.0.1:27017/pdf_transparency'; // replace if needed
-const JWT_SECRET = 'ae29231e49681ab303673f498219560b8bbf2056ada7ba37081592ba9060f8b112db8df803ab21f6d830daf02344cc2ce0f53faae95e52a6f7bbb732679c1fcc';
-const HF_API_KEY = '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'; // Hugging Face Inference API key
-// Replace old HF_MODEL
+const JWT_SECRET = process.env.JWT_SECRET || 'your-default-jwt-secret';  // load from env or default
+const HF_API_KEY = process.env.HF_API_KEY;  // no hardcoded token now
 const HF_MODEL = 'deepset/roberta-base-squad2';
-// choose a model available on HF inference endpoint
-// SMTP settings - set to your SMTP provider details
-const SMTP_HOST = 'smtp.example.com';
-const SMTP_PORT = 587;
-const SMTP_USER = 'ajaiks2005@gmail.com';
-const SMTP_PASS = 'pvxp uuvb fsap xqbb';
+// SMTP settings
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.example.com';
+const SMTP_PORT = process.env.SMTP_PORT || 587;
+const SMTP_USER = process.env.SMTP_USER || 'user@example.com';
+const SMTP_PASS = process.env.SMTP_PASS || 'password';
 //////////////////////////////////////////////////////////////////////////////////
 
 
