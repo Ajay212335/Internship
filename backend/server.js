@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 ///////////////////// CONFIG - hardcoded (from your message) /////////////////////
-const PORT = 5050;
+const PORT = 'https://iifs-project.web.app';
 const MONGO_URI = 'mongodb://127.0.0.1:27017/pdf_transparency'; // replace if needed
 const JWT_SECRET = process.env.JWT_SECRET || 'your-default-jwt-secret';  // load from env or default
 const HF_API_KEY = process.env.HF_API_KEY;  // no hardcoded token now
