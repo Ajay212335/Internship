@@ -1,0 +1,80 @@
+/* Add this CSS to your project, for example in a Login.css file */
+
+.card {
+  background: #f4bcc4; /* light pink */
+  padding: 2rem;
+  border-radius: 25px;
+  width: 350px;
+  margin: 100px auto;
+  box-shadow: 0 20px 50px rgba(184, 63, 87, 0.5);
+  text-align: center;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #af495d;
+}
+
+.card h2 {
+  font-weight: 700;
+  font-size: 2rem;
+  margin-bottom: 1.5rem;
+  letter-spacing: 0.05em;
+}
+
+.card input {
+  width: 100%;
+  padding: 12px 20px;
+  margin: 0.5rem 0 1rem 0;
+  border: none;
+  border-radius: 25px;
+  font-size: 1.1rem;
+  color: #af495d;
+  background: white;
+  box-sizing: border-box;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.card input::placeholder {
+  color: #bca9b0;
+  font-weight: 700;
+}
+
+.card button {
+  background-color: #af495d;
+  color: white;
+  border: none;
+  border-radius: 25px;
+  padding: 12px 0;
+  width: 100%;
+  font-weight: 700;
+  font-size: 1.2rem;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: background-color 0.3s ease;
+  margin-bottom: 0.8rem;
+}
+
+.card button:hover {
+  background-color: #8c3646;
+}
+
+.card p {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: white;
+}
+
+.card p button {
+  background: none;
+  border: none;
+  color: #af495d;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 5px;
+}
+
+.msg {
+  color: #7a3545;
+  font-weight: 600;
+  margin-top: 1rem;
+}
