@@ -1,7 +1,6 @@
 /**
  * server.js
- * Single-file backend (Express + Mongoose + nodemailer + pdf-parse + node-fetch)
- * Uses hardcoded config values provided by you at top of file.
+ * Backend for PDF Transparency app - ready for Render hosting
  */
 
 const express = require('express');
@@ -16,20 +15,37 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
 
-///////////////////// CONFIG - hardcoded (from your message) /////////////////////
-const PORT = 'https://iifs-project.web.app';
-const MONGO_URI = 'mongodb://127.0.0.1:27017/pdf_transparency'; // replace if needed
-const JWT_SECRET = process.env.JWT_SECRET || 'your-default-jwt-secret';  // load from env or default
-const HF_API_KEY = process.env.HF_API_KEY;  // no hardcoded token now
-const HF_MODEL = 'deepset/roberta-base-squad2';
-// SMTP settings
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.example.com';
-const SMTP_PORT = process.env.SMTP_PORT || 587;
-const SMTP_USER = process.env.SMTP_USER || 'user@example.com';
-const SMTP_PASS = process.env.SMTP_PASS || 'password';
+///////////////////// CONFIG - from environment variables /////////////////////
+
+const PORT = process.env.PORT || 3000;  // Render sets this automatically
+
+const MONGO_URI = process.env.MONGO_URI; // Your MongoDB Atlas connection string
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-default-jwt-secret';  // Use strong secret in prod
+
+const HF_API_KEY = process.env.HF_API_KEY;  // HuggingFace API key
+
+// SMTP config for nodemailer - set your real SMTP info in env vars
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = parseInt(process.env.SMTP_PORT) || 587;
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+
 //////////////////////////////////////////////////////////////////////////////////
 
-
+// Check all required env vars present
+if (!MONGO_URI) {
+  console.error('❌ MONGO_URI not set in environment variables');
+  process.exit(1);
+}
+if (!HF_API_KEY) {
+  console.error('❌ HF_API_KEY not set in environment variables');
+  process.exit(1);
+}
+if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+  console.error('❌ SMTP_HOST, SMTP_USER, or SMTP_PASS not set in environment variables');
+  process.exit(1);
+}
 
 // Initialize express app
 const app = express();
@@ -39,9 +55,9 @@ app.use(cookieParser());
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(()=> console.log('MongoDB connected'))
+  .then(()=> console.log('✅ MongoDB connected'))
   .catch(err=> {
-    console.error('MongoDB connection error', err);
+    console.error('❌ MongoDB connection error', err);
     process.exit(1);
   });
 
@@ -80,29 +96,15 @@ const PDFModel = mongoose.model('PDF', PDFSchema);
 const Conversation = mongoose.model('Conversation', ConversationSchema);
 
 // nodemailer transporter
-
-
 let transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_PORT === 465, // true for 465, false for other ports
   auth: {
-    user: "ajaiks2005@gmail.com",
-    pass: "pvxp uuvb fsap xqbb"
-  }
+    user: SMTP_USER,
+    pass: SMTP_PASS,
+  },
 });
-
-transporter.sendMail({
-  from: '"Test OTP" <ajaiks2005@gmail.com>',
-  to: "recipient@example.com",
-  subject: "Test Email",
-  text: "Hello! This is a test."
-}).then(() => {
-  console.log("✅ Email sent successfully");
-}).catch(err => {
-  console.error("❌ Email sending failed:", err);
-});
-
 
 // multer config (PDF only)
 const upload = multer({
@@ -135,8 +137,6 @@ async function createOtpRecord(email, purpose) {
     await sendOtpEmail(email, otp);
   } catch (e) {
     console.error('Failed to send OTP email:', e && e.message ? e.message : e);
-    // don't throw here; still keep OTP in DB so user can check logs / manual OTP
-    // but we will report error to client so they know email send failed
   }
   return otp;
 }
@@ -192,8 +192,7 @@ app.post('/api/register/start', async (req, res) => {
     if (await User.findOne({ email })) return res.status(400).json({ ok: false, error: 'email_exists' });
     if (await User.findOne({ phone })) return res.status(400).json({ ok: false, error: 'phone_exists' });
 
-    const otp = await createOtpRecord(email, 'register');
-    // if email sending fails, createOtpRecord still returns otp; but we don't return the otp in response (security)
+    await createOtpRecord(email, 'register');
     return res.json({ ok: true, msg: 'otp_sent' });
   } catch (err) {
     console.error('register/start error', err);
@@ -217,7 +216,6 @@ app.post('/api/register/verify', async (req, res) => {
 
     // create token cookie
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
-    // cookie options - secure=false for local HTTP; change in production
     res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
     return res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email } });
   } catch (err) {
@@ -359,8 +357,6 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
   }
 });
 
-
-
 // Get conversations (user's history)
 app.get('/api/conversations', authMiddleware, async (req, res) => {
   try {
@@ -385,5 +381,5 @@ app.get('/api/me', authMiddleware, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`🚀 Server listening on port ${PORT}`);
 });
