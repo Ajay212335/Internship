@@ -317,7 +317,6 @@ app.get('/api/my-pdfs', authMiddleware, async (req, res) => {
     return res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
-
 // Ask question (send: pdfId, question) -> call HF model with context (pdf text) and store answer
 app.post('/api/ask', authMiddleware, async (req, res) => {
   try {
@@ -339,24 +338,35 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
       }
     };
 
-    const hfResp = await fetch(hfUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${HF_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!hfResp.ok) {
-      const txt = await hfResp.text();
-      console.error('HF error', hfResp.status, txt);
-      return res.status(500).json({ ok: false, error: 'llm_error', details: txt });
+    let hfResp;
+    try {
+      hfResp = await fetch(hfUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.HF_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (fetchErr) {
+      console.error('HF fetch error:', fetchErr);
+      return res.status(500).json({ ok: false, error: 'llm_error' });
     }
 
-    const hfJson = await hfResp.json();
+    if (!hfResp.ok) {
+      console.error('HF error', hfResp.status);
+      return res.status(500).json({ ok: false, error: 'llm_error' });
+    }
 
-    let answer = hfJson.answer || "Sorry, I couldn't find an answer.";
+    let hfJson;
+    try {
+      hfJson = await hfResp.json();
+    } catch (parseErr) {
+      console.error('HF JSON parse error:', parseErr);
+      return res.status(500).json({ ok: false, error: 'llm_error' });
+    }
+
+    const answer = hfJson.answer || "Sorry, I couldn't find an answer.";
 
     const conv = new Conversation({
       userId: req.userId,
@@ -367,12 +377,12 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
     await conv.save();
 
     return res.json({ ok: true, answer, convId: conv._id });
+
   } catch (err) {
     console.error('ask error:', err);
     return res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
-
 
 
 // Get conversations (user's history)
