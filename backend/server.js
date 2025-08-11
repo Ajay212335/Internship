@@ -318,6 +318,7 @@ app.get('/api/my-pdfs', authMiddleware, async (req, res) => {
   }
 });
 // Ask question (send: pdfId, question) -> call HF model with context (pdf text) and store answer
+// Ask question (send: pdfId, question) -> call HF model with context (pdf text) and store answer
 app.post('/api/ask', authMiddleware, async (req, res) => {
   try {
     const { pdfId, question } = req.body;
@@ -331,6 +332,9 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
 
     const hfUrl = 'https://api-inference.huggingface.co/models/deepset/roberta-base-squad2';
 
+    // ✅ Directly insert your Hugging Face API key here
+    const HF_API_KEY = 'hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // replace with your real key
+
     const payload = {
       inputs: {
         question,
@@ -343,19 +347,20 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
       hfResp = await fetch(hfUrl, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.HF_API_KEY}`,
+          Authorization: `Bearer ${HF_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
     } catch (fetchErr) {
       console.error('HF fetch error:', fetchErr);
-      return res.status(500).json({ ok: false, error: 'llm_error' });
+      return res.status(500).json({ ok: false, error: 'llm_error', details: 'Failed to reach Hugging Face API' });
     }
 
     if (!hfResp.ok) {
-      console.error('HF error', hfResp.status);
-      return res.status(500).json({ ok: false, error: 'llm_error' });
+      const txt = await hfResp.text();
+      console.error('HF error', hfResp.status, txt);
+      return res.status(500).json({ ok: false, error: 'llm_error', details: txt });
     }
 
     let hfJson;
@@ -363,7 +368,7 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
       hfJson = await hfResp.json();
     } catch (parseErr) {
       console.error('HF JSON parse error:', parseErr);
-      return res.status(500).json({ ok: false, error: 'llm_error' });
+      return res.status(500).json({ ok: false, error: 'llm_error', details: 'Invalid JSON from Hugging Face' });
     }
 
     const answer = hfJson.answer || "Sorry, I couldn't find an answer.";
@@ -380,7 +385,7 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
 
   } catch (err) {
     console.error('ask error:', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    return res.status(500).json({ ok: false, error: 'server_error', details: err.message });
   }
 });
 
