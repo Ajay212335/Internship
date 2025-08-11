@@ -1,6 +1,6 @@
 /**
  * server.js
- * Backend for PDF Transparency app - ready for Render hosting
+ * Backend for PDF Transparency app - production ready
  */
 
 const express = require('express');
@@ -16,39 +16,28 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-///////////////////// CONFIG - from environment variables /////////////////////
+///////////////////// CONFIG /////////////////////
 
-const PORT = process.env.PORT || 3000;  // Render sets this automatically
+const PORT = process.env.PORT || 3000;  
+const MONGO_URI = process.env.MONGO_URI;
+const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
+const HF_API_KEY = process.env.HF_API_KEY;
 
-const MONGO_URI = process.env.MONGO_URI; // Your MongoDB Atlas connection string
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-default-jwt-secret';  // Use strong secret in prod
-
-const HF_API_KEY = process.env.HF_API_KEY;  // HuggingFace API key
-
-// SMTP config for nodemailer - set your real SMTP info in env vars
+// SMTP config (must be set in environment variables)
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = parseInt(process.env.SMTP_PORT) || 587;
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 
-//////////////////////////////////////////////////////////////////////////////////
-
-// Check all required env vars present
-if (!MONGO_URI) {
-  console.error('❌ MONGO_URI not set in environment variables');
-  process.exit(1);
-}
-if (!HF_API_KEY) {
-  console.error('❌ HF_API_KEY not set in environment variables');
-  process.exit(1);
-}
-if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-  console.error('❌ SMTP_HOST, SMTP_USER, or SMTP_PASS not set in environment variables');
+// Validate required env vars
+if (!MONGO_URI || !HF_API_KEY || !SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+  console.error('❌ Missing required environment variables');
   process.exit(1);
 }
 
-// Initialize express app
+//////////////////////////////////////////////////
+
+// Initialize app
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '15mb' }));
@@ -56,26 +45,29 @@ app.use(cookieParser());
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(()=> console.log('✅ MongoDB connected'))
-  .catch(err=> {
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => {
     console.error('❌ MongoDB connection error', err);
     process.exit(1);
   });
 
-// Schemas
+///////////////////// SCHEMAS /////////////////////
+
 const UserSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
   phone: String,
   isVerified: { type: Boolean, default: false },
 });
+
 const OTPTempSchema = new mongoose.Schema({
   email: String,
   otp: String,
-  purpose: String, // 'register' or 'login'
+  purpose: String,
   expiresAt: Date
 });
-OTPTempSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
+OTPTempSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 const PDFSchema = new mongoose.Schema({
   userId: mongoose.Types.ObjectId,
   filename: String,
@@ -83,6 +75,7 @@ const PDFSchema = new mongoose.Schema({
   text: String,
   uploadedAt: { type: Date, default: Date.now }
 });
+
 const ConversationSchema = new mongoose.Schema({
   userId: mongoose.Types.ObjectId,
   pdfId: mongoose.Types.ObjectId,
@@ -96,28 +89,33 @@ const OTPTemp = mongoose.model('OTPTemp', OTPTempSchema);
 const PDFModel = mongoose.model('PDF', PDFSchema);
 const Conversation = mongoose.model('Conversation', ConversationSchema);
 
-// nodemailer transporter
+///////////////////// MAILER /////////////////////
+
 let transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_PORT === 465,
   auth: {
-    user: "ajaiks2005@gmail.com",
-    pass: "pvxp uuvb fsap xqbb"
+    user: SMTP_USER,
+    pass: SMTP_PASS
   }
 });
 
-// multer config (PDF only)
+///////////////////// MULTER /////////////////////
+
 const upload = multer({
   dest: 'uploads/',
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB
+  limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (path.extname(file.originalname).toLowerCase() !== '.pdf') return cb(new Error('Only PDF allowed'));
+    if (path.extname(file.originalname).toLowerCase() !== '.pdf') {
+      return cb(new Error('Only PDF allowed'));
+    }
     cb(null, true);
   }
 });
 
-// helpers
+///////////////////// HELPERS /////////////////////
+
 async function sendOtpEmail(toEmail, otp) {
   const mail = {
     from: SMTP_USER,
@@ -129,15 +127,15 @@ async function sendOtpEmail(toEmail, otp) {
 }
 
 async function createOtpRecord(email, purpose) {
-  const otp = ('' + Math.floor(100000 + Math.random() * 900000)); // 6 digits
-  const expiresAt = new Date(Date.now() + 10*60*1000); // 10 minutes
-  await OTPTemp.findOneAndDelete({ email, purpose }); // ensure single
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  await OTPTemp.findOneAndDelete({ email, purpose });
   const rec = new OTPTemp({ email, otp, purpose, expiresAt });
   await rec.save();
   try {
     await sendOtpEmail(email, otp);
   } catch (e) {
-    console.error('Failed to send OTP email:', e && e.message ? e.message : e);
+    console.error('Failed to send OTP email:', e.message);
   }
   return otp;
 }
@@ -145,28 +143,30 @@ async function createOtpRecord(email, purpose) {
 async function verifyOtp(email, otp, purpose) {
   const rec = await OTPTemp.findOne({ email, purpose });
   if (!rec) return { ok: false, reason: 'no_otp' };
-  if (rec.expiresAt < new Date()) { await OTPTemp.deleteOne({ _id: rec._id }); return { ok: false, reason: 'expired' }; }
+  if (rec.expiresAt < new Date()) {
+    await OTPTemp.deleteOne({ _id: rec._id });
+    return { ok: false, reason: 'expired' };
+  }
   if (rec.otp !== otp) return { ok: false, reason: 'wrong' };
   await OTPTemp.deleteOne({ _id: rec._id });
   return { ok: true };
 }
 
-// auth middleware using cookie token
 function authMiddleware(req, res, next) {
-  const token = req.cookies && req.cookies.token;
+  const token = req.cookies?.token;
   if (!token) return res.status(401).json({ ok: false, error: 'unauthenticated' });
   try {
     const data = jwt.verify(token, JWT_SECRET);
     req.userId = data.userId;
     next();
-  } catch (e) {
+  } catch {
     return res.status(401).json({ ok: false, error: 'invalid_token' });
   }
 }
 
-/* ---------- Routes ---------- */
+///////////////////// ROUTES /////////////////////
 
-// health
+// Health check
 app.get('/', (req, res) => res.send('Server running'));
 
 // Check duplicates
@@ -177,55 +177,46 @@ app.post('/api/check-duplicate', async (req, res) => {
     if (email) resp.emailExists = !!(await User.findOne({ email }));
     if (phone) resp.phoneExists = !!(await User.findOne({ phone }));
     if (name) resp.nameExists = !!(await User.findOne({ name }));
-    return res.json({ ok: true, ...resp });
+    res.json({ ok: true, ...resp });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// Register:start -> send OTP
+// Register
 app.post('/api/register/start', async (req, res) => {
   try {
     const { name, email, phone } = req.body;
     if (!name || !email || !phone) return res.status(400).json({ ok: false, error: 'missing_fields' });
-
     if (await User.findOne({ email })) return res.status(400).json({ ok: false, error: 'email_exists' });
     if (await User.findOne({ phone })) return res.status(400).json({ ok: false, error: 'phone_exists' });
-
     await createOtpRecord(email, 'register');
-    return res.json({ ok: true, msg: 'otp_sent' });
+    res.json({ ok: true, msg: 'otp_sent' });
   } catch (err) {
     console.error('register/start error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// Register:verify -> create user + set cookie token
 app.post('/api/register/verify', async (req, res) => {
   try {
     const { name, email, phone, otp } = req.body;
     if (!name || !email || !phone || !otp) return res.status(400).json({ ok: false, error: 'missing_fields' });
-
     const v = await verifyOtp(email, otp, 'register');
     if (!v.ok) return res.status(400).json({ ok: false, error: v.reason });
-
-    if (await User.findOne({ email })) return res.status(400).json({ ok: false, error: 'email_exists' });
-
     const user = new User({ name, email, phone, isVerified: true });
     await user.save();
-
-    // create token cookie
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
-    return res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email } });
   } catch (err) {
     console.error('register/verify error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// Login:start -> send OTP if user exists
+// Login
 app.post('/api/login/start', async (req, res) => {
   try {
     const { email } = req.body;
@@ -233,31 +224,26 @@ app.post('/api/login/start', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ ok: false, error: 'not_registered' });
     await createOtpRecord(email, 'login');
-    return res.json({ ok: true, msg: 'otp_sent' });
+    res.json({ ok: true, msg: 'otp_sent' });
   } catch (err) {
     console.error('login/start error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// Login:verify -> issue cookie
 app.post('/api/login/verify', async (req, res) => {
   try {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ ok: false, error: 'missing_fields' });
-
     const v = await verifyOtp(email, otp, 'login');
     if (!v.ok) return res.status(400).json({ ok: false, error: v.reason });
-
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ ok: false, error: 'not_registered' });
-
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
-    return res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email } });
   } catch (err) {
     console.error('login/verify error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
@@ -267,13 +253,13 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// Upload PDF (authenticated)
+// Upload PDF
 app.post('/api/upload-pdf', authMiddleware, upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: 'no_file' });
     const dataBuffer = fs.readFileSync(req.file.path);
     const pdfData = await pdfParse(dataBuffer);
-    const text = (pdfData && pdfData.text) ? pdfData.text : '';
+    const text = pdfData.text || '';
     const pdfRecord = new PDFModel({
       userId: req.userId,
       filename: req.file.filename,
@@ -281,106 +267,78 @@ app.post('/api/upload-pdf', authMiddleware, upload.single('pdf'), async (req, re
       text
     });
     await pdfRecord.save();
-
-    // remove file from uploads to keep disk clean
     fs.unlinkSync(req.file.path);
-
-    return res.json({ ok: true, pdf: { id: pdfRecord._id, name: pdfRecord.originalName } });
+    res.json({ ok: true, pdf: { id: pdfRecord._id, name: pdfRecord.originalName } });
   } catch (err) {
     console.error('upload-pdf error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// List user's PDFs
+// List PDFs
 app.get('/api/my-pdfs', authMiddleware, async (req, res) => {
   try {
     const pdfs = await PDFModel.find({ userId: req.userId }).sort({ uploadedAt: -1 }).select('-text');
-    return res.json({ ok: true, pdfs });
+    res.json({ ok: true, pdfs });
   } catch (err) {
     console.error('my-pdfs error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// Ask question (send: pdfId, question) -> call HF model with context (pdf text) and store answer
+// Ask question
 app.post('/api/ask', authMiddleware, async (req, res) => {
   try {
     const { pdfId, question } = req.body;
-    if (!pdfId) return res.status(400).json({ ok: false, error: 'missing_pdfId' });
-    if (!question || question.trim() === '') return res.status(400).json({ ok: false, error: 'missing_question' });
-
+    if (!pdfId || !question?.trim()) return res.status(400).json({ ok: false, error: 'missing_fields' });
     const pdf = await PDFModel.findOne({ _id: pdfId, userId: req.userId });
     if (!pdf) return res.status(404).json({ ok: false, error: 'pdf_not_found' });
 
-    const contextText = (pdf.text || '').slice(0, 30000);
-
-    const hfUrl = 'https://api-inference.huggingface.co/models/deepset/roberta-base-squad2';
-
-    const payload = {
-      inputs: {
-        question,
-        context: contextText,
-      }
-    };
-
-    const hfResp = await fetch(hfUrl, {
+    const contextText = pdf.text.slice(0, 30000);
+    const hfResp = await fetch('https://api-inference.huggingface.co/models/deepset/roberta-base-squad2', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${HF_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+      headers: { Authorization: `Bearer ${HF_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs: { question, context: contextText } })
     });
 
     if (!hfResp.ok) {
-      const txt = await hfResp.text();
-      console.error('HF error', hfResp.status, txt);
-      return res.status(500).json({ ok: false, error: 'llm_error', details: txt });
+      console.error('HF error', await hfResp.text());
+      return res.status(500).json({ ok: false, error: 'llm_error' });
     }
 
     const hfJson = await hfResp.json();
+    const answer = hfJson.answer || "Sorry, I couldn't find an answer.";
 
-    let answer = hfJson.answer || "Sorry, I couldn't find an answer.";
-
-    const conv = new Conversation({
-      userId: req.userId,
-      pdfId: pdf._id,
-      question,
-      answer,
-    });
+    const conv = new Conversation({ userId: req.userId, pdfId: pdf._id, question, answer });
     await conv.save();
-
-    return res.json({ ok: true, answer, convId: conv._id });
+    res.json({ ok: true, answer, convId: conv._id });
   } catch (err) {
     console.error('ask error:', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// Get conversations (user's history)
+// Get conversation history
 app.get('/api/conversations', authMiddleware, async (req, res) => {
   try {
     const convs = await Conversation.find({ userId: req.userId }).sort({ createdAt: -1 });
-    return res.json({ ok: true, convs });
+    res.json({ ok: true, convs });
   } catch (err) {
     console.error('conversations error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-// Get single user info
+// Get user profile
 app.get('/api/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId).select('-__v');
     if (!user) return res.status(404).json({ ok: false, error: 'not_found' });
-    return res.json({ ok: true, user });
+    res.json({ ok: true, user });
   } catch (err) {
     console.error('me error', err);
-    return res.status(500).json({ ok: false, error: 'server_error' });
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
