@@ -33,7 +33,10 @@ const SMTP_PASS = process.env.SMTP_PASS || 'password';
 
 // Initialize express app
 const app = express();
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({
+  origin: ['https://iifs-project.web.app'], // Firebase hosting URL
+  credentials: true
+}));
 app.use(express.json({ limit: '15mb' }));
 app.use(cookieParser());
 
@@ -221,7 +224,11 @@ app.post('/api/register/verify', async (req, res) => {
     // create token cookie
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     // cookie options - secure=false for local HTTP; change in production
-    res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
+    res.cookie('token', token, { 
+  httpOnly: true, 
+  sameSite: 'none', 
+  secure: true 
+});
     return res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email } });
   } catch (err) {
     console.error('register/verify error', err);
@@ -257,7 +264,11 @@ app.post('/api/login/verify', async (req, res) => {
     if (!user) return res.status(400).json({ ok: false, error: 'not_registered' });
 
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
-    res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false });
+    res.cookie('token', token, { 
+  httpOnly: true, 
+  sameSite: 'none', 
+  secure: true 
+});
     return res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email } });
   } catch (err) {
     console.error('login/verify error', err);
