@@ -333,7 +333,7 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
     const hfUrl = 'https://api-inference.huggingface.co/models/deepset/roberta-base-squad2';
 
     // ✅ Directly insert your Hugging Face API key here
-    const HF_API_KEY = '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'; // replace with your real key
+    const HF_API_KEY = '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'; // replace with your real key
 
     const payload = {
       inputs: {
