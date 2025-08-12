@@ -24,5 +24,6 @@ jobs:
 
     - name: Run script with HF API Key
       env:
-        HF_API_KEY: ${{ secrets.HF_API_KEY }}
-      run: node your_script.js  # Replace with your actual script file
+  HF_API_KEY: ${{ secrets.HF_API_KEY }}
+
+      run: node server.js  # Replace with your actual script file
