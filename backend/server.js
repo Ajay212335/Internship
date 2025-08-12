@@ -340,7 +340,7 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
 
     const contextText = (pdf.text || '').slice(0, 30000);
 
-    const hfUrl = 'https://api-inference.huggingface.co/models/bert-large-uncased-whole-word-masking-finetuned-squad';
+    const hfUrl = 'https://api-inference.huggingface.co/models/deepset/roberta-base-squad2';
 
     // Use the HF_API_KEY loaded from env
     const payload = {
