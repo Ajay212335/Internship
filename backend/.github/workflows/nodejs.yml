@@ -1,0 +1,28 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [main]      # or your branch
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'  # or your preferred Node.js version
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run script with HF API Key
+      env:
+        HF_API_KEY: ${{ secrets.HF_API_KEY }}
+      run: node your_script.js  # Replace with your actual script file
