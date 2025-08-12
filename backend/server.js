@@ -21,7 +21,6 @@ const path = require('path');
 const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.JWT_SECRET || 'default_jwt_secret';
-const HF_API_KEY = process.env.HF_API_KEY;
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.example.com';
 const SMTP_PORT = process.env.SMTP_PORT || 587;
 const SMTP_USER = process.env.SMTP_USER || 'user@example.com';
@@ -319,6 +318,17 @@ app.get('/api/my-pdfs', authMiddleware, async (req, res) => {
 });
 // Ask question (send: pdfId, question) -> call HF model with context (pdf text) and store answer
 // Ask question (send: pdfId, question) -> call HF model with context (pdf text) and store answer
+const HF_API_KEY = process.env.HF_API_KEY;
+
+if (!HF_API_KEY) {
+  console.error("❌ ERROR: HF_API_KEY environment variable is NOT set! Please set it in your .env or GitHub Secrets.");
+  process.exit(1);
+}
+
+console.log("✅ HF_API_KEY loaded. Key starts with:", HF_API_KEY.slice(0,5) + "...");
+
+// ... your existing code ...
+
 app.post('/api/ask', authMiddleware, async (req, res) => {
   try {
     const { pdfId, question } = req.body;
@@ -332,9 +342,7 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
 
     const hfUrl = 'https://api-inference.huggingface.co/models/deepset/roberta-base-squad2';
 
-    // ✅ Directly insert your Hugging Face API key here
-    const HF_API_KEY = process.env.HF_API_KEY; // replace with your real key
-
+    // Use the HF_API_KEY loaded from env
     const payload = {
       inputs: {
         question,
@@ -347,7 +355,7 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
       hfResp = await fetch(hfUrl, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${HF_API_KEY}`,
+          Authorization: `Bearer ${HF_API_KEY}`, // IMPORTANT: Bearer + space + token
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -359,7 +367,7 @@ app.post('/api/ask', authMiddleware, async (req, res) => {
 
     if (!hfResp.ok) {
       const txt = await hfResp.text();
-      console.error('HF error', hfResp.status, txt);
+      console.error('HF API error', hfResp.status, txt);
       return res.status(500).json({ ok: false, error: 'llm_error', details: txt });
     }
 
